@@ -374,7 +374,7 @@
             '<div class="value">' + clamped.toFixed(1) + '%</div>' +
             '<div class="bar"><div style="width:' + clamped + '%;"></div></div>' +
             (isAlarm ? '<div class="alarm-badge">ALERTE : sol trop sec</div>' : '') +
-            '<div class="sub"><span>soil moisture</span><span>' + (clamped < 25 ? "dry" : (clamped < 60 ? "ok" : "wet")) + '</span></div>' +
+            '<div class="sub"><span>Statut: ' + (clamped < 25 ? "Sec" : (clamped < 60 ? "OK" : "Mouillé")) + '</span></div>' +
           '</div>';
 
         return div;
