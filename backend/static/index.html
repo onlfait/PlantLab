@@ -66,7 +66,7 @@
       display:flex; align-items:center; gap:10px;
       padding: 10px 12px; border-radius: 999px;
       background: rgba(10,14,20,0.55);
-      border: 1px solid var(--stroke);
+      border: 1px solid rgba(255,255,255,0.10);
       box-shadow: var(--shadow);
       white-space:nowrap;
     }
@@ -76,7 +76,7 @@
     .card{
       border-radius: var(--radius);
       background: var(--card);
-      border: 1px solid var(--stroke);
+      border: 1px solid rgba(255,255,255,0.10);
       box-shadow: var(--shadow);
       position: relative;
       overflow: hidden;
@@ -95,7 +95,7 @@
     .panel-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom: 10px; }
     .panel-title{ font-weight: 900; letter-spacing: 0.4px; }
 
-    .btns{ display:flex; gap:8px; flex-wrap:wrap; }
+    .btns{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 
     button{
       padding: 8px 12px;
@@ -104,6 +104,15 @@
       background: rgba(8, 12, 18, 0.55);
       color: var(--text);
       cursor:pointer;
+    }
+
+    .input-date{
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(8, 12, 18, 0.55);
+      color: var(--text);
+      width: 140px;
     }
 
     .chart-wrap{ height: 340px; position:relative; }
@@ -134,7 +143,6 @@
 
     .sub{ display:flex; justify-content:space-between; margin-top: 10px; font-size: 12px; color: rgba(234,255,247,0.78); }
 
-    /* Alarm state (KPI cards) */
     .alarm{
       background: var(--alarm-bg) !important;
       border-color: var(--alarm-stroke) !important;
@@ -155,7 +163,6 @@
       color: rgba(255,220,235,0.95);
     }
 
-    /* Filter pill */
     .filter-pill{
       display:inline-flex;
       align-items:center;
@@ -219,7 +226,6 @@
       </div>
     </header>
 
-    <!-- Filters -->
     <div class="card panel" style="margin-bottom:12px;">
       <div class="panel-head">
         <div>
@@ -230,7 +236,6 @@
       <div id="filters" class="btns"></div>
     </div>
 
-    <!-- Chart -->
     <div class="card panel">
       <div class="panel-head">
         <div>
@@ -238,10 +243,19 @@
           <div class="muted">Données de démonstration — style final, data réelle plus tard</div>
         </div>
         <div class="btns">
-          <button onclick="loadHistory(60)">1h</button>
-          <button onclick="loadHistory(180)">3h</button>
-          <button onclick="loadHistory(720)">12h</button>
+          <button onclick="loadHistoryMinutes(60)">1h</button>
+          <button onclick="loadHistoryMinutes(360)">6h</button>
+          <button onclick="loadHistoryMinutes(720)">12h</button>
+          <button onclick="loadHistoryMinutes(1440)">24h</button>
         </div>
+      </div>
+
+      <div class="btns" style="margin-top:10px;">
+        <span class="muted" style="align-self:center;">Plage (YYYY-MM-DD):</span>
+        <input id="dateStart" class="input-date" placeholder="2026-01-30" />
+        <input id="dateEnd" class="input-date" placeholder="2026-01-30" />
+        <button onclick="applyDateRange()">Appliquer</button>
+        <button onclick="clearDateRange()">Reset</button>
       </div>
 
       <div class="chart-wrap">
@@ -251,7 +265,6 @@
       <div class="debug" id="debug"></div>
     </div>
 
-    <!-- KPI cards -->
     <div class="kpi-grid" id="latest"></div>
 
     <footer>
@@ -271,7 +284,7 @@
       var debugEl = document.getElementById("debug");
       var chart = null;
 
-      var ALARM_THRESHOLD = 50;
+      var ALARM_THRESHOLD = 30;
 
       var SENSOR_COLORS = [
         {line:"#22ff88"},
@@ -282,9 +295,8 @@
 
       var sensors = [];
       var enabled = {};       // id -> bool
-      var currentMinutes = 180;
+      var currentMinutes = 360;
 
-      // store last known values from /api/latest
       var latestById = {};    // id -> percent
 
       function log(msg){
@@ -331,8 +343,6 @@
       }
 
       function updateFilterAlarms(){
-        // Apply/remove CSS class based on latestById
-        // Each filter pill has id: filter-pill-S1 etc.
         for(var i=0; i<sensors.length; i++){
           var sid = sensors[i].id;
           var el = document.getElementById("filter-pill-" + sid);
@@ -384,12 +394,12 @@
 
             var cb = document.createElement("input");
             cb.type = "checkbox";
-            cb.checked = true;
-            enabled[s.id] = true;
+            cb.checked = (enabled[s.id] !== false);
+            enabled[s.id] = cb.checked;
 
             cb.onchange = function(){
               enabled[s.id] = cb.checked;
-              loadHistory(currentMinutes);
+              loadHistoryMinutes(currentMinutes);
             };
 
             var dot = document.createElement("span");
@@ -412,25 +422,35 @@
           })();
         }
 
-        // apply alarm styling if we already have latest values
         updateFilterAlarms();
       }
 
-      function loadSensors(cb){
-        httpGetJSON("/api/sensors", function(data){
-          sensors = data.sensors || [];
+      function loadConfig(cb){
+        httpGetJSON("/api/config", function(cfg){
+          if(cfg && typeof cfg.alarm_threshold === "number"){
+            ALARM_THRESHOLD = cfg.alarm_threshold;
+          }
+          if(cfg && cfg.sensors && cfg.sensors.length){
+            sensors = cfg.sensors;
+            // ensure enabled has keys
+            for(var i=0; i<sensors.length; i++){
+              var sid = sensors[i].id;
+              if(typeof enabled[sid] !== "boolean") enabled[sid] = true;
+            }
+          }
           renderFilters();
           cb();
         }, function(err){
-          log("Sensors error: " + err);
-          setLive(false);
+          // fallback : continue with defaults
+          log("Config warning: " + err);
+          cb();
         });
       }
 
       function loadLatest(){
         httpGetJSON("/api/latest", function(data){
           latestEl.innerHTML = "";
-          latestById = {}; // reset
+          latestById = {};
 
           var vals = data.values || [];
           for(var i=0; i<vals.length; i++){
@@ -439,7 +459,6 @@
             latestEl.appendChild(kpiCard(v.sensor_id, v.label, v.percent, data.ts));
           }
 
-          // update filter alarm badges
           updateFilterAlarms();
 
           updatedEl.textContent = "Updated: " + fmtTime(data.ts);
@@ -451,107 +470,128 @@
         });
       }
 
-      window.loadHistory = function(minutes){
-        currentMinutes = minutes;
+      function buildHHMMLabels(series){
+        var labels = [];
+        var tsList = [];
+        for(var i=0; i<series.length; i++){
+          var row = series[i];
+          var d = new Date(row.ts * 1000);
+          var hh = d.getHours();
+          var mm = d.getMinutes();
+          var hhStr = (hh < 10 ? "0" : "") + hh;
+          var mmStr = (mm < 10 ? "0" : "") + mm;
+          labels.push(hhStr + ":" + mmStr);
+          tsList.push(row.ts);
+        }
+        return { labels: labels, tsList: tsList };
+      }
 
-        httpGetJSON("/api/history?minutes=" + minutes, function(data){
-          var series = data.series || [];
+      function renderChart(series){
+        var meta = buildHHMMLabels(series);
+        var labels = meta.labels;
+        var tsList = meta.tsList;
 
-          var labels = [];
-          var tsList = []; // pour calculer l'espacement
-          for(var i=0; i<series.length; i++){
-            var row = series[i];
-            var d = new Date(row.ts * 1000);
+        var datasets = [];
+        for(var s=0; s<sensors.length; s++){
+          var sensor = sensors[s];
+          if(!enabled[sensor.id]) continue;
 
-            // HH:MM "propre" (sans suffixes de timezone)
-            var hh = d.getHours();
-            var mm = d.getMinutes();
-            var hhStr = (hh < 10 ? "0" : "") + hh;
-            var mmStr = (mm < 10 ? "0" : "") + mm;
-
-            labels.push(hhStr + ":" + mmStr);
-            tsList.push(row.ts);
+          var points = [];
+          for(var j=0; j<series.length; j++){
+            points.push(series[j][sensor.id]);
           }
 
+          datasets.push({
+            label: sensor.label,
+            data: points,
+            borderColor: SENSOR_COLORS[s % SENSOR_COLORS.length].line,
+            borderWidth: 2,
+            fill: false,
+            lineTension: 0.25,
+            pointRadius: 0
+          });
+        }
 
+        if(chart){ chart.destroy(); chart = null; }
 
-          var datasets = [];
-          for(var s=0; s<sensors.length; s++){
-            var sensor = sensors[s];
-            if(!enabled[sensor.id]) continue;
-
-            var points = [];
-            for(var j=0; j<series.length; j++){
-              points.push(series[j][sensor.id]);
-            }
-
-            datasets.push({
-              label: sensor.label,
-              data: points,
-              borderColor: SENSOR_COLORS[s % SENSOR_COLORS.length].line,
-              borderWidth: 2,
-              fill: false,
-              lineTension: 0.25,
-              pointRadius: 0
-            });
-          }
-
-          if(chart){ chart.destroy(); chart = null; }
-
-          var ctx = document.getElementById("chart").getContext("2d");
-          chart = new Chart(ctx, {
-            type: "line",
-            data: { labels: labels, datasets: datasets },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              animation: false,
-              legend: { labels: { fontColor: "rgba(234,255,247,0.85)" } },
-              scales: {
-                xAxes: [{
-                  ticks: {
+        var ctx = document.getElementById("chart").getContext("2d");
+        chart = new Chart(ctx, {
+          type: "line",
+          data: { labels: labels, datasets: datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            legend: { labels: { fontColor: "rgba(234,255,247,0.85)" } },
+            scales: {
+              xAxes: [{
+                ticks: {
                   fontColor: "rgba(155,216,194,0.85)",
-                  autoSkip: false, // on gère nous-mêmes
+                  autoSkip: false,
                   maxRotation: 0,
                   minRotation: 0,
                   callback: function(value, index){
-                    // Espacement entre deux points (en secondes) estimé à partir des deux premiers
-                    // (fallback: 60s si on ne sait pas)
                     var stepSec = 60;
                     if(tsList && tsList.length >= 2){
                       stepSec = Math.max(1, tsList[1] - tsList[0]);
                     }
-
-                    // 30 minutes = 1800 secondes
                     var everyN = Math.max(1, Math.round(1800 / stepSec));
-
-                    // Affiche un label toutes les 30 minutes (et toujours le dernier)
                     if(index % everyN === 0 || index === (labels.length - 1)) return value;
                     return "";
                   }
                 },
-                  gridLines: { color: "rgba(255,255,255,0.06)" }
-                }],
-                yAxes: [{
-                  ticks: { min: 0, max: 100, fontColor: "rgba(155,216,194,0.85)" },
-                  gridLines: { color: "rgba(255,255,255,0.06)" }
-                }]
-              }
+                gridLines: { color: "rgba(255,255,255,0.06)" }
+              }],
+              yAxes: [{
+                ticks: { min: 0, max: 100, fontColor: "rgba(155,216,194,0.85)" },
+                gridLines: { color: "rgba(255,255,255,0.06)" }
+              }]
             }
-          });
+          }
+        });
 
-          setTimeout(function(){ if(chart) chart.resize(); }, 50);
-          setTimeout(function(){ if(chart) chart.resize(); }, 250);
+        setTimeout(function(){ if(chart) chart.resize(); }, 50);
+        setTimeout(function(){ if(chart) chart.resize(); }, 250);
+      }
+
+      window.loadHistoryMinutes = function(minutes){
+        currentMinutes = minutes;
+        httpGetJSON("/api/history?minutes=" + minutes, function(data){
+          renderChart(data.series || []);
         }, function(err){
           log("History error: " + err);
           setLive(false);
         });
       };
 
+      window.applyDateRange = function(){
+        var s = document.getElementById("dateStart").value;
+        var e = document.getElementById("dateEnd").value;
+
+        if(!s || !e){
+          log("Merci de saisir start et end au format YYYY-MM-DD");
+          return;
+        }
+
+        httpGetJSON("/api/history?start=" + encodeURIComponent(s) + "&end=" + encodeURIComponent(e), function(data){
+          renderChart(data.series || []);
+          log("");
+        }, function(err){
+          log("Date range error: " + err);
+          setLive(false);
+        });
+      };
+
+      window.clearDateRange = function(){
+        document.getElementById("dateStart").value = "";
+        document.getElementById("dateEnd").value = "";
+        window.loadHistoryMinutes(currentMinutes || 360);
+      };
+
       // init
       log("Boot… Chart=" + (typeof Chart));
-      loadSensors(function(){
-        window.loadHistory(180);
+      loadConfig(function(){
+        window.loadHistoryMinutes(currentMinutes);
         loadLatest();
         setInterval(loadLatest, 5000);
       });

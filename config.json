@@ -1,0 +1,10 @@
+{
+  "alarm_threshold": 30,
+  "sensors": [
+    {"id": "S1", "label": "Tomates"},
+    {"id": "S2", "label": "Radis"},
+    {"id": "S3", "label": "Laitue"},
+    {"id": "S4", "label": "Témoin"}
+  ]
+}
+
