@@ -1,0 +1,40 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+
+# Logs / runtime
+*.log
+logs/
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*.json
+data/*.csv
+data/*.parquet
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Node (if you later add it)
+node_modules/
+dist/
+build/

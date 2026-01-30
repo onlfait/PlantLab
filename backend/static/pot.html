@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#070a10" />
+  <title>PlantLab — Pot</title>
+
+  <style>
+    :root{
+      --bg0:#070a10; --bg1:#0b0f14;
+      --card: rgba(16, 24, 32, 0.62);
+      --stroke: rgba(255,255,255,0.10);
+      --text:#eafff7; --muted:#9bd8c2;
+      --shadow: 0 16px 60px rgba(0,0,0,0.55);
+      --radius: 18px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at 15% 10%, rgba(34,255,136,0.12), transparent 55%),
+        radial-gradient(900px 600px at 85% 20%, rgba(0,229,255,0.10), transparent 55%),
+        radial-gradient(900px 600px at 70% 90%, rgba(255,43,214,0.08), transparent 60%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      min-height: 100vh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      overflow-x:hidden;
+    }
+    .wrap{ max-width: 1100px; margin: 18px auto; padding: 0 16px; }
+
+    .card{
+      border-radius: var(--radius);
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      padding: 14px;
+      margin-bottom: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::after{
+      content:"";
+      position:absolute; inset:-2px;
+      background: linear-gradient(135deg, rgba(34,255,136,0.15), rgba(0,229,255,0.10), rgba(255,43,214,0.12));
+      filter: blur(14px);
+      opacity: 0.45;
+      pointer-events:none;
+    }
+    .card > *{ position: relative; }
+
+    .top{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .title{ font-weight: 900; font-size: 22px; }
+    .muted{ color: var(--muted); font-size: 13px; }
+    .btns{ display:flex; gap:8px; flex-wrap:wrap; }
+    button{
+      padding: 8px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(8, 12, 18, 0.55);
+      color: var(--text);
+      cursor:pointer;
+    }
+    .chart-wrap{ height: 420px; position: relative; }
+    .chart-wrap canvas{ width:100% !important; height:100% !important; display:block; }
+
+    .debug{ font-size:12px; color: rgba(255,255,255,0.75); white-space: pre-wrap; margin-top: 8px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="top">
+        <div>
+          <div class="title" id="title">Pot</div>
+          <div class="muted" id="subtitle">Chargement…</div>
+        </div>
+        <div class="btns">
+          <button onclick="load(180)">3h</button>
+          <button onclick="load(720)">12h</button>
+          <button onclick="load(1440)">24h</button>
+          <button onclick="location.href='/'">← Overview</button>
+        </div>
+      </div>
+      <div class="debug" id="debug"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/Chart.min.js"></script>
+  <script>
+    (function(){
+      var debugEl = document.getElementById("debug");
+      function log(m){ debugEl.textContent = m; }
+
+      window.onerror = function(message, source, lineno, colno){
+        log("JS error: " + message + "\n" + source + ":" + lineno + ":" + colno);
+      };
+
+      function httpGetJSON(url, onOk, onErr){
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.onreadystatechange = function(){
+          if(xhr.readyState !== 4) return;
+          if(xhr.status >= 200 && xhr.status < 300){
+            try{ onOk(JSON.parse(xhr.responseText)); }
+            catch(e){ onErr("JSON parse failed: " + e); }
+          }else{
+            onErr("HTTP " + xhr.status + " on " + url);
+          }
+        };
+        xhr.send();
+      }
+
+      // ES5 query param parser (no URLSearchParams needed)
+      function getQueryParam(name){
+        var qs = window.location.search || "";
+        if(qs.charAt(0) === "?") qs = qs.substring(1);
+        var parts = qs.split("&");
+        for(var i=0; i<parts.length; i++){
+          var kv = parts[i].split("=");
+          var k = decodeURIComponent(kv[0] || "");
+          if(k === name){
+            return decodeURIComponent((kv[1] || "").replace(/\+/g, " "));
+          }
+        }
+        return null;
+      }
+
+      var id = (getQueryParam("id") || "S1").toUpperCase();
+
+      var titleEl = document.getElementById("title");
+      var subtitleEl = document.getElementById("subtitle");
+      var chart = null;
+
+      function fmtTime(ts){ return new Date(ts*1000).toLocaleString(); }
+
+      window.load = function(minutes){
+        httpGetJSON("/api/history/" + encodeURIComponent(id) + "?minutes=" + minutes, function(data){
+          titleEl.textContent = data.sensor.label + " (" + data.sensor.id + ")";
+          subtitleEl.textContent = "Dernier point: " + fmtTime(data.series[data.series.length-1].ts) + " — Fenêtre: " + minutes + " min";
+          log("");
+
+          var labels = [];
+          var values = [];
+          for(var i=0; i<data.series.length; i++){
+            var p = data.series[i];
+            var d = new Date(p.ts*1000);
+            labels.push(d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}));
+            values.push(p.value);
+          }
+
+          if(chart){ chart.destroy(); chart = null; }
+
+          var ctx = document.getElementById("chart").getContext("2d");
+          chart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: labels,
+              datasets: [{
+                label: data.sensor.label,
+                data: values,
+                borderColor: "#22ff88",
+                borderWidth: 2,
+                fill: false,
+                lineTension: 0.25,
+                pointRadius: 0
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              legend: { labels: { fontColor: "rgba(234,255,247,0.85)" } },
+              scales: {
+                xAxes: [{ ticks: { fontColor: "rgba(155,216,194,0.85)" }, gridLines: { color: "rgba(255,255,255,0.06)" } }],
+                yAxes: [{ ticks: { min:0, max:100, fontColor: "rgba(155,216,194,0.85)" }, gridLines: { color: "rgba(255,255,255,0.06)" } }]
+              }
+            }
+          });
+
+          setTimeout(function(){ if(chart) chart.resize(); }, 50);
+          setTimeout(function(){ if(chart) chart.resize(); }, 250);
+        }, function(err){
+          log("Load error: " + err + "\nChart=" + (typeof Chart) + " id=" + id);
+        });
+      };
+
+      log("Boot… Chart=" + (typeof Chart) + " id=" + id);
+      window.load(720);
+    })();
+  </script>
+</body>
+</html>

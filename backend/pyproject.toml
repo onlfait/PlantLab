@@ -1,0 +1,19 @@
+[project]
+name = "plantlab"
+version = "0.1.0"
+description = "PlantLab Raspberry Pi"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "httpx>=0.26",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

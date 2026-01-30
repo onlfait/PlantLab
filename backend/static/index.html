@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PlantLab" />
+  <meta name="theme-color" content="#070a10" />
+  <title>PlantLab</title>
+
+  <style>
+    :root{
+      --bg0:#070a10; --bg1:#0b0f14;
+      --card: rgba(16, 24, 32, 0.62);
+      --stroke: rgba(255,255,255,0.10);
+      --text:#eafff7; --muted:#9bd8c2;
+      --a:#22ff88; --b:#00e5ff; --c:#ff2bd6;
+      --shadow: 0 16px 60px rgba(0,0,0,0.55);
+      --radius: 18px;
+
+      --alarm-bg: rgba(255, 60, 110, 0.14);
+      --alarm-stroke: rgba(255, 60, 110, 0.35);
+      --alarm-glow: 0 0 0 2px rgba(255, 60, 110, 0.12), 0 0 24px rgba(255, 60, 110, 0.20);
+    }
+
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at 15% 10%, rgba(34,255,136,0.12), transparent 55%),
+        radial-gradient(900px 600px at 85% 20%, rgba(0,229,255,0.10), transparent 55%),
+        radial-gradient(900px 600px at 70% 90%, rgba(255,43,214,0.08), transparent 60%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      min-height: 100vh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      overflow-x:hidden;
+      overscroll-behavior: none;
+    }
+
+    body::before{
+      content:"";
+      position:fixed; inset:0;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255,255,255,0.03),
+        rgba(255,255,255,0.03) 1px,
+        transparent 1px,
+        transparent 6px
+      );
+      mix-blend-mode: overlay;
+      opacity:0.12;
+      pointer-events:none;
+    }
+
+    .wrap{ max-width: 1100px; margin: 18px auto 28px; padding: 0 16px; }
+
+    header{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom: 14px; }
+    .brand img{ width: 240px; height:auto; filter: drop-shadow(0 0 16px rgba(34,255,136,0.20)) drop-shadow(0 0 20px rgba(0,229,255,0.10)); }
+
+    .badge{
+      display:flex; align-items:center; gap:10px;
+      padding: 10px 12px; border-radius: 999px;
+      background: rgba(10,14,20,0.55);
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      white-space:nowrap;
+    }
+    .dot{ width:10px; height:10px; border-radius:50%; background: var(--a); box-shadow: 0 0 14px rgba(34,255,136,0.8); }
+    .muted{ color: var(--muted); font-size: 13px; }
+
+    .card{
+      border-radius: var(--radius);
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::after{
+      content:"";
+      position:absolute; inset:-2px;
+      background: linear-gradient(135deg, rgba(34,255,136,0.15), rgba(0,229,255,0.10), rgba(255,43,214,0.12));
+      filter: blur(14px);
+      opacity: 0.45;
+      pointer-events:none;
+    }
+    .card-inner{ position:relative; padding: 14px 14px 12px; }
+
+    .panel{ margin-top: 12px; padding: 14px; }
+    .panel-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom: 10px; }
+    .panel-title{ font-weight: 900; letter-spacing: 0.4px; }
+
+    .btns{ display:flex; gap:8px; flex-wrap:wrap; }
+
+    button{
+      padding: 8px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(8, 12, 18, 0.55);
+      color: var(--text);
+      cursor:pointer;
+    }
+
+    .chart-wrap{ height: 340px; position:relative; }
+    .chart-wrap canvas{ width:100% !important; height:100% !important; display:block; }
+
+    .kpi-grid{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+      max-width: 980px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    @media (max-width: 900px){
+      .kpi-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 720px; }
+    }
+    @media (max-width: 520px){
+      .kpi-grid{ grid-template-columns: 1fr; max-width: 420px; }
+    }
+
+    .kpi-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+    .sensor{ font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; font-size: 13px; color: #dffdf1; opacity: 0.95; }
+    .value{ font-size: 40px; line-height: 1; margin-top: 10px; font-weight: 900; letter-spacing: -0.5px; }
+
+    .bar{ height: 10px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.08); overflow:hidden; margin-top: 12px; }
+    .bar > div{ height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--a), var(--b), var(--c)); transition: width 400ms ease; }
+
+    .sub{ display:flex; justify-content:space-between; margin-top: 10px; font-size: 12px; color: rgba(234,255,247,0.78); }
+
+    /* Alarm state (KPI cards) */
+    .alarm{
+      background: var(--alarm-bg) !important;
+      border-color: var(--alarm-stroke) !important;
+      box-shadow: var(--shadow), var(--alarm-glow) !important;
+    }
+    .alarm .sensor{ color: #ffd6e2; }
+    .alarm .value{ text-shadow: 0 0 18px rgba(255,60,110,0.18); }
+    .alarm-badge{
+      display:inline-block;
+      margin-top: 8px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .5px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,60,110,0.35);
+      background: rgba(255,60,110,0.12);
+      color: rgba(255,220,235,0.95);
+    }
+
+    /* Filter pill */
+    .filter-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(8, 12, 18, 0.40);
+      cursor: pointer;
+      user-select: none;
+    }
+    .filter-pill input{ margin:0; }
+    .filter-dot{
+      width:10px; height:10px; border-radius:50%;
+      display:inline-block;
+    }
+    .filter-soif{
+      display:none;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,60,110,0.35);
+      background: rgba(255,60,110,0.12);
+      color: rgba(255,220,235,0.95);
+      margin-left: 6px;
+    }
+    .filter-alarm{
+      border-color: rgba(255,60,110,0.35) !important;
+      background: rgba(255,60,110,0.10) !important;
+      box-shadow: 0 0 0 2px rgba(255, 60, 110, 0.10);
+    }
+    .filter-alarm .filter-soif{ display:inline-block; }
+
+    footer{ margin-top: 14px; display:flex; justify-content:space-between; gap:10px; color: rgba(155,216,194,0.85); font-size: 12px; }
+    a{ color: var(--b); text-decoration:none; }
+
+    .debug{
+      margin-top: 10px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.75);
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <img src="/static/plantlab-logo.svg" alt="PlantLab" />
+      </div>
+
+      <div class="badge">
+        <span class="dot" id="statusDot"></span>
+        <div>
+          <div style="font-weight:800;">LIVE</div>
+          <div class="muted" id="updated">Initialisation…</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Filters -->
+    <div class="card panel" style="margin-bottom:12px;">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Filtres</div>
+          <div class="muted">Afficher/masquer des pots dans le graphique</div>
+        </div>
+      </div>
+      <div id="filters" class="btns"></div>
+    </div>
+
+    <!-- Chart -->
+    <div class="card panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Suivi de l'humidité</div>
+          <div class="muted">Données de démonstration — style final, data réelle plus tard</div>
+        </div>
+        <div class="btns">
+          <button onclick="loadHistory(60)">1h</button>
+          <button onclick="loadHistory(180)">3h</button>
+          <button onclick="loadHistory(720)">12h</button>
+        </div>
+      </div>
+
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+
+      <div class="debug" id="debug"></div>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="kpi-grid" id="latest"></div>
+
+    <footer>
+      <div>SSID: <strong>PlantLab</strong> — accès local</div>
+      <div class="muted">Endpoint: <a href="/api/health">/api/health</a></div>
+    </footer>
+  </div>
+
+  <script src="/static/Chart.min.js"></script>
+
+  <script>
+    (function(){
+      var latestEl = document.getElementById("latest");
+      var updatedEl = document.getElementById("updated");
+      var statusDot = document.getElementById("statusDot");
+      var filtersEl = document.getElementById("filters");
+      var debugEl = document.getElementById("debug");
+      var chart = null;
+
+      var ALARM_THRESHOLD = 50;
+
+      var SENSOR_COLORS = [
+        {line:"#22ff88"},
+        {line:"#00e5ff"},
+        {line:"#ff2bd6"},
+        {line:"#9b5cff"}
+      ];
+
+      var sensors = [];
+      var enabled = {};       // id -> bool
+      var currentMinutes = 180;
+
+      // store last known values from /api/latest
+      var latestById = {};    // id -> percent
+
+      function log(msg){
+        if(!debugEl) return;
+        debugEl.textContent = msg || "";
+      }
+
+      window.onerror = function(message, source, lineno, colno){
+        log("JS error: " + message + "\n" + source + ":" + lineno + ":" + colno);
+      };
+
+      function setLive(ok){
+        statusDot.style.background = ok ? "#22ff88" : "#ff2bd6";
+        statusDot.style.boxShadow = ok ? "0 0 14px rgba(34,255,136,0.8)" : "0 0 14px rgba(255,43,214,0.8)";
+      }
+
+      function fmtTime(ts){
+        var d = new Date(ts * 1000);
+        return d.toLocaleString();
+      }
+
+      function httpGetJSON(url, onOk, onErr){
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.onreadystatechange = function(){
+          if(xhr.readyState !== 4) return;
+          if(xhr.status >= 200 && xhr.status < 300){
+            try{
+              onOk(JSON.parse(xhr.responseText));
+            }catch(e){
+              onErr("JSON parse failed: " + e);
+            }
+          }else{
+            onErr("HTTP " + xhr.status + " on " + url);
+          }
+        };
+        xhr.send();
+      }
+
+      function isThirsty(sensorId){
+        var v = latestById[sensorId];
+        if(typeof v !== "number") return false;
+        return v < ALARM_THRESHOLD;
+      }
+
+      function updateFilterAlarms(){
+        // Apply/remove CSS class based on latestById
+        // Each filter pill has id: filter-pill-S1 etc.
+        for(var i=0; i<sensors.length; i++){
+          var sid = sensors[i].id;
+          var el = document.getElementById("filter-pill-" + sid);
+          if(!el) continue;
+          if(isThirsty(sid)) {
+            if(el.className.indexOf("filter-alarm") === -1) el.className += " filter-alarm";
+          } else {
+            el.className = el.className.replace(/\s*filter-alarm\b/g, "");
+          }
+        }
+      }
+
+      function kpiCard(sensorId, label, percent, ts){
+        var clamped = Math.max(0, Math.min(100, percent));
+        var isAlarm = clamped < ALARM_THRESHOLD;
+
+        var div = document.createElement("div");
+        div.className = "card";
+        if(isAlarm) div.className += " alarm";
+        div.style.cursor = "pointer";
+        div.onclick = function(){ window.location.href = "/static/pot.html?id=" + encodeURIComponent(sensorId); };
+
+        div.innerHTML =
+          '<div class="card-inner">' +
+            '<div class="kpi-top">' +
+              '<div class="sensor">' + label + ' <span style="opacity:.6; font-weight:700;">(' + sensorId + ')</span></div>' +
+              '<div class="muted">' + fmtTime(ts) + '</div>' +
+            '</div>' +
+            '<div class="value">' + clamped.toFixed(1) + '%</div>' +
+            '<div class="bar"><div style="width:' + clamped + '%;"></div></div>' +
+            (isAlarm ? '<div class="alarm-badge">ALERTE : sol trop sec</div>' : '') +
+            '<div class="sub"><span>soil moisture</span><span>' + (clamped < 25 ? "dry" : (clamped < 60 ? "ok" : "wet")) + '</span></div>' +
+          '</div>';
+
+        return div;
+      }
+
+      function renderFilters(){
+        filtersEl.innerHTML = "";
+
+        for(var i=0; i<sensors.length; i++){
+          (function(){
+            var s = sensors[i];
+            var color = SENSOR_COLORS[i % SENSOR_COLORS.length].line;
+
+            var pill = document.createElement("label");
+            pill.className = "filter-pill";
+            pill.id = "filter-pill-" + s.id;
+
+            var cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = true;
+            enabled[s.id] = true;
+
+            cb.onchange = function(){
+              enabled[s.id] = cb.checked;
+              loadHistory(currentMinutes);
+            };
+
+            var dot = document.createElement("span");
+            dot.className = "filter-dot";
+            dot.style.background = color;
+            dot.style.boxShadow = "0 0 12px " + color;
+
+            var text = document.createElement("span");
+            text.textContent = s.label;
+
+            var badge = document.createElement("span");
+            badge.className = "filter-soif";
+            badge.textContent = "SOIF";
+
+            pill.appendChild(cb);
+            pill.appendChild(dot);
+            pill.appendChild(text);
+            pill.appendChild(badge);
+            filtersEl.appendChild(pill);
+          })();
+        }
+
+        // apply alarm styling if we already have latest values
+        updateFilterAlarms();
+      }
+
+      function loadSensors(cb){
+        httpGetJSON("/api/sensors", function(data){
+          sensors = data.sensors || [];
+          renderFilters();
+          cb();
+        }, function(err){
+          log("Sensors error: " + err);
+          setLive(false);
+        });
+      }
+
+      function loadLatest(){
+        httpGetJSON("/api/latest", function(data){
+          latestEl.innerHTML = "";
+          latestById = {}; // reset
+
+          var vals = data.values || [];
+          for(var i=0; i<vals.length; i++){
+            var v = vals[i];
+            latestById[v.sensor_id] = v.percent;
+            latestEl.appendChild(kpiCard(v.sensor_id, v.label, v.percent, data.ts));
+          }
+
+          // update filter alarm badges
+          updateFilterAlarms();
+
+          updatedEl.textContent = "Updated: " + fmtTime(data.ts);
+          setLive(true);
+          log("");
+        }, function(err){
+          setLive(false);
+          log("Latest error: " + err);
+        });
+      }
+
+      window.loadHistory = function(minutes){
+        currentMinutes = minutes;
+
+        httpGetJSON("/api/history?minutes=" + minutes, function(data){
+          var series = data.series || [];
+
+          var labels = [];
+          var tsList = []; // pour calculer l'espacement
+          for(var i=0; i<series.length; i++){
+            var row = series[i];
+            var d = new Date(row.ts * 1000);
+
+            // HH:MM "propre" (sans suffixes de timezone)
+            var hh = d.getHours();
+            var mm = d.getMinutes();
+            var hhStr = (hh < 10 ? "0" : "") + hh;
+            var mmStr = (mm < 10 ? "0" : "") + mm;
+
+            labels.push(hhStr + ":" + mmStr);
+            tsList.push(row.ts);
+          }
+
+
+
+          var datasets = [];
+          for(var s=0; s<sensors.length; s++){
+            var sensor = sensors[s];
+            if(!enabled[sensor.id]) continue;
+
+            var points = [];
+            for(var j=0; j<series.length; j++){
+              points.push(series[j][sensor.id]);
+            }
+
+            datasets.push({
+              label: sensor.label,
+              data: points,
+              borderColor: SENSOR_COLORS[s % SENSOR_COLORS.length].line,
+              borderWidth: 2,
+              fill: false,
+              lineTension: 0.25,
+              pointRadius: 0
+            });
+          }
+
+          if(chart){ chart.destroy(); chart = null; }
+
+          var ctx = document.getElementById("chart").getContext("2d");
+          chart = new Chart(ctx, {
+            type: "line",
+            data: { labels: labels, datasets: datasets },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              legend: { labels: { fontColor: "rgba(234,255,247,0.85)" } },
+              scales: {
+                xAxes: [{
+                  ticks: {
+                  fontColor: "rgba(155,216,194,0.85)",
+                  autoSkip: false, // on gère nous-mêmes
+                  maxRotation: 0,
+                  minRotation: 0,
+                  callback: function(value, index){
+                    // Espacement entre deux points (en secondes) estimé à partir des deux premiers
+                    // (fallback: 60s si on ne sait pas)
+                    var stepSec = 60;
+                    if(tsList && tsList.length >= 2){
+                      stepSec = Math.max(1, tsList[1] - tsList[0]);
+                    }
+
+                    // 30 minutes = 1800 secondes
+                    var everyN = Math.max(1, Math.round(1800 / stepSec));
+
+                    // Affiche un label toutes les 30 minutes (et toujours le dernier)
+                    if(index % everyN === 0 || index === (labels.length - 1)) return value;
+                    return "";
+                  }
+                },
+                  gridLines: { color: "rgba(255,255,255,0.06)" }
+                }],
+                yAxes: [{
+                  ticks: { min: 0, max: 100, fontColor: "rgba(155,216,194,0.85)" },
+                  gridLines: { color: "rgba(255,255,255,0.06)" }
+                }]
+              }
+            }
+          });
+
+          setTimeout(function(){ if(chart) chart.resize(); }, 50);
+          setTimeout(function(){ if(chart) chart.resize(); }, 250);
+        }, function(err){
+          log("History error: " + err);
+          setLive(false);
+        });
+      };
+
+      // init
+      log("Boot… Chart=" + (typeof Chart));
+      loadSensors(function(){
+        window.loadHistory(180);
+        loadLatest();
+        setInterval(loadLatest, 5000);
+      });
+    })();
+  </script>
+</body>
+</html>
