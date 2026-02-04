@@ -22,6 +22,10 @@
       --alarm-bg: rgba(255, 60, 110, 0.14);
       --alarm-stroke: rgba(255, 60, 110, 0.35);
       --alarm-glow: 0 0 0 2px rgba(255, 60, 110, 0.12), 0 0 24px rgba(255, 60, 110, 0.20);
+
+      --offline-bg: rgba(120, 140, 160, 0.12);
+      --offline-stroke: rgba(120, 140, 160, 0.28);
+      --offline-glow: 0 0 0 2px rgba(120, 140, 160, 0.10), 0 0 22px rgba(120, 140, 160, 0.14);
     }
 
     *{ box-sizing:border-box; }
@@ -150,6 +154,20 @@
     }
     .alarm .sensor{ color: #ffd6e2; }
     .alarm .value{ text-shadow: 0 0 18px rgba(255,60,110,0.18); }
+
+    .offline{
+      background: var(--offline-bg) !important;
+      border-color: var(--offline-stroke) !important;
+      box-shadow: var(--shadow), var(--offline-glow) !important;
+      opacity: 0.95;
+    }
+    .offline .sensor{ color: rgba(220,235,245,0.92); }
+    .offline .value{ text-shadow: 0 0 18px rgba(120,140,160,0.20); }
+    .offline .bar > div{
+      background: linear-gradient(90deg, rgba(120,140,160,0.25), rgba(120,140,160,0.10));
+      box-shadow: none;
+    }
+
     .alarm-badge{
       display:inline-block;
       margin-top: 8px;
@@ -161,6 +179,19 @@
       border: 1px solid rgba(255,60,110,0.35);
       background: rgba(255,60,110,0.12);
       color: rgba(255,220,235,0.95);
+    }
+
+    .offline-badge{
+      display:inline-block;
+      margin-top: 8px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .5px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(120,140,160,0.40);
+      background: rgba(120,140,160,0.14);
+      color: rgba(220,235,245,0.95);
     }
 
     .filter-pill{
@@ -179,6 +210,7 @@
       width:10px; height:10px; border-radius:50%;
       display:inline-block;
     }
+
     .filter-soif{
       display:none;
       font-size: 10px;
@@ -191,12 +223,33 @@
       color: rgba(255,220,235,0.95);
       margin-left: 6px;
     }
+
+    .filter-offline{
+      display:none;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(120,140,160,0.45);
+      background: rgba(120,140,160,0.14);
+      color: rgba(220,235,245,0.95);
+      margin-left: 6px;
+    }
+
     .filter-alarm{
       border-color: rgba(255,60,110,0.35) !important;
       background: rgba(255,60,110,0.10) !important;
       box-shadow: 0 0 0 2px rgba(255, 60, 110, 0.10);
     }
     .filter-alarm .filter-soif{ display:inline-block; }
+
+    .filter-is-offline{
+      border-color: rgba(120,140,160,0.45) !important;
+      background: rgba(120,140,160,0.10) !important;
+      box-shadow: 0 0 0 2px rgba(120, 140, 160, 0.10);
+    }
+    .filter-is-offline .filter-offline{ display:inline-block; }
 
     footer{ margin-top: 14px; display:flex; justify-content:space-between; gap:10px; color: rgba(155,216,194,0.85); font-size: 12px; }
     a{ color: var(--b); text-decoration:none; }
@@ -240,7 +293,7 @@
       <div class="panel-head">
         <div>
           <div class="panel-title">Suivi de l'humidité</div>
-          <div class="muted">Données de démonstration — style final, data réelle plus tard</div>
+          <div class="muted">PlantLab est en production — données en direct</div>
         </div>
         <div class="btns">
           <button onclick="loadHistoryMinutes(60)">1h</button>
@@ -297,7 +350,9 @@
       var enabled = {};       // id -> bool
       var currentMinutes = 360;
 
-      var latestById = {};    // id -> percent
+      var latestById = {};    // id -> number|null
+      var statusById = {};    // id -> "online"|"offline"
+      var lastSeenById = {};  // id -> epoch|null
 
       function log(msg){
         if(!debugEl) return;
@@ -318,6 +373,11 @@
         return d.toLocaleString();
       }
 
+      function fmtTimeOrDash(ts){
+        if(typeof ts !== "number") return "—";
+        return fmtTime(ts);
+      }
+
       function httpGetJSON(url, onOk, onErr){
         var xhr = new XMLHttpRequest();
         xhr.open("GET", url, true);
@@ -336,34 +396,69 @@
         xhr.send();
       }
 
+      function isOnline(sensorId){
+        return statusById[sensorId] === "online";
+      }
+
       function isThirsty(sensorId){
+        if(!isOnline(sensorId)) return false;
         var v = latestById[sensorId];
         if(typeof v !== "number") return false;
         return v < ALARM_THRESHOLD;
       }
 
-      function updateFilterAlarms(){
+      function updateFilterBadges(){
         for(var i=0; i<sensors.length; i++){
           var sid = sensors[i].id;
           var el = document.getElementById("filter-pill-" + sid);
           if(!el) continue;
-          if(isThirsty(sid)) {
-            if(el.className.indexOf("filter-alarm") === -1) el.className += " filter-alarm";
-          } else {
-            el.className = el.className.replace(/\s*filter-alarm\b/g, "");
+
+          el.className = el.className
+            .replace(/\s*filter-alarm\b/g, "")
+            .replace(/\s*filter-is-offline\b/g, "");
+
+          if(!isOnline(sid)){
+            el.className += " filter-is-offline";
+            continue;
+          }
+
+          if(isThirsty(sid)){
+            el.className += " filter-alarm";
           }
         }
       }
 
-      function kpiCard(sensorId, label, percent, ts){
-        var clamped = Math.max(0, Math.min(100, percent));
-        var isAlarm = clamped < ALARM_THRESHOLD;
+      function kpiCard(sensorId, label, percent, ts, status, lastSeen){
+        var online = (status === "online");
+        var hasNumber = (typeof percent === "number");
+        var clamped = hasNumber ? Math.max(0, Math.min(100, percent)) : null;
+
+        var isAlarm = online && (clamped !== null) && (clamped < ALARM_THRESHOLD);
 
         var div = document.createElement("div");
         div.className = "card";
-        if(isAlarm) div.className += " alarm";
+        if(!online) div.className += " offline";
+        else if(isAlarm) div.className += " alarm";
+
         div.style.cursor = "pointer";
         div.onclick = function(){ window.location.href = "/static/pot.html?id=" + encodeURIComponent(sensorId); };
+
+        var valueHtml = online && clamped !== null ? (clamped.toFixed(1) + "%") : "OFFLINE";
+        var barWidth = online && clamped !== null ? clamped : 0;
+
+        var badgeHtml = "";
+        if(!online){
+          badgeHtml = '<div class="offline-badge">CAPTEUR DÉCONNECTÉ</div>';
+        }else if(isAlarm){
+          badgeHtml = '<div class="alarm-badge">ALERTE : sol trop sec</div>';
+        }
+
+        var statusText = "";
+        if(!online){
+          statusText = "Déconnecté (dernière info: " + fmtTimeOrDash(lastSeen) + ")";
+        }else{
+          statusText = (clamped < 25 ? "Sec" : (clamped < 60 ? "OK" : "Mouillé"));
+        }
 
         div.innerHTML =
           '<div class="card-inner">' +
@@ -371,10 +466,10 @@
               '<div class="sensor">' + label + ' <span style="opacity:.6; font-weight:700;">(' + sensorId + ')</span></div>' +
               '<div class="muted">' + fmtTime(ts) + '</div>' +
             '</div>' +
-            '<div class="value">' + clamped.toFixed(1) + '%</div>' +
-            '<div class="bar"><div style="width:' + clamped + '%;"></div></div>' +
-            (isAlarm ? '<div class="alarm-badge">ALERTE : sol trop sec</div>' : '') +
-            '<div class="sub"><span>Statut: ' + (clamped < 25 ? "Sec" : (clamped < 60 ? "OK" : "Mouillé")) + '</span></div>' +
+            '<div class="value">' + valueHtml + '</div>' +
+            '<div class="bar"><div style="width:' + barWidth + '%;"></div></div>' +
+            badgeHtml +
+            '<div class="sub"><span>Statut: ' + statusText + '</span></div>' +
           '</div>';
 
         return div;
@@ -410,19 +505,24 @@
             var text = document.createElement("span");
             text.textContent = s.label;
 
-            var badge = document.createElement("span");
-            badge.className = "filter-soif";
-            badge.textContent = "SOIF";
+            var badgeSoif = document.createElement("span");
+            badgeSoif.className = "filter-soif";
+            badgeSoif.textContent = "SOIF";
+
+            var badgeOff = document.createElement("span");
+            badgeOff.className = "filter-offline";
+            badgeOff.textContent = "OFFLINE";
 
             pill.appendChild(cb);
             pill.appendChild(dot);
             pill.appendChild(text);
-            pill.appendChild(badge);
+            pill.appendChild(badgeSoif);
+            pill.appendChild(badgeOff);
             filtersEl.appendChild(pill);
           })();
         }
 
-        updateFilterAlarms();
+        updateFilterBadges();
       }
 
       function loadConfig(cb){
@@ -432,7 +532,6 @@
           }
           if(cfg && cfg.sensors && cfg.sensors.length){
             sensors = cfg.sensors;
-            // ensure enabled has keys
             for(var i=0; i<sensors.length; i++){
               var sid = sensors[i].id;
               if(typeof enabled[sid] !== "boolean") enabled[sid] = true;
@@ -441,7 +540,6 @@
           renderFilters();
           cb();
         }, function(err){
-          // fallback : continue with defaults
           log("Config warning: " + err);
           cb();
         });
@@ -451,15 +549,32 @@
         httpGetJSON("/api/latest", function(data){
           latestEl.innerHTML = "";
           latestById = {};
+          statusById = {};
+          lastSeenById = {};
 
           var vals = data.values || [];
           for(var i=0; i<vals.length; i++){
             var v = vals[i];
-            latestById[v.sensor_id] = v.percent;
-            latestEl.appendChild(kpiCard(v.sensor_id, v.label, v.percent, data.ts));
+            var sid = v.sensor_id;
+
+            latestById[sid] = (typeof v.percent === "number") ? v.percent : null;
+            statusById[sid] = (v.status === "online") ? "online" : "offline";
+            lastSeenById[sid] = (typeof v.last_seen === "number") ? v.last_seen : null;
+
+            latestEl.appendChild(kpiCard(sid, v.label, latestById[sid], data.ts, statusById[sid], lastSeenById[sid]));
           }
 
-          updateFilterAlarms();
+          // Ensure every configured sensor has a status (robust if backend returns fewer entries)
+          for(var k=0; k<sensors.length; k++){
+            var sid2 = sensors[k].id;
+            if(typeof statusById[sid2] !== "string"){
+              statusById[sid2] = "offline";
+              latestById[sid2] = null;
+              lastSeenById[sid2] = null;
+            }
+          }
+
+          updateFilterBadges();
 
           updatedEl.textContent = "Updated: " + fmtTime(data.ts);
           setLive(true);
@@ -498,7 +613,8 @@
 
           var points = [];
           for(var j=0; j<series.length; j++){
-            points.push(series[j][sensor.id]);
+            var v = series[j][sensor.id];
+            points.push((typeof v === "number") ? v : null);
           }
 
           datasets.push({
@@ -508,7 +624,8 @@
             borderWidth: 2,
             fill: false,
             lineTension: 0.25,
-            pointRadius: 0
+            pointRadius: 0,
+            spanGaps: false
           });
         }
 
